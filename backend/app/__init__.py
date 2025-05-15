@@ -40,7 +40,7 @@ def create_app():
     # Route to serve the frontend
     @app.route('/')
     def serve_frontend():
-        return send_file('../frontend/index.html')
+        return send_file('../../frontend/index.html')
     
     # Register blueprints
     from app.routes import api_bp
