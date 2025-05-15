@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, send_file
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_marshmallow import Marshmallow
@@ -36,6 +36,11 @@ def create_app():
     db.init_app(app)
     ma.init_app(app)
     cache.init_app(app)
+
+    # Route to serve the frontend
+    @app.route('/')
+    def serve_frontend():
+ return send_file('../frontend/index.html')
     
     # Register blueprints
     from app.routes import api_bp
