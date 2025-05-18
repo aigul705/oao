@@ -5,17 +5,24 @@ from app.services.metal_service import MetalService
 
 @api_bp.route('/metals/current', methods=['GET'])
 def get_current_prices():
-    """Get current prices for all metals."""
+    """Get current prices for all metals, optionally in a specified currency."""
     try:
-        prices = MetalService.get_current_prices()
+        target_currency = request.args.get('currency')
+        prices = MetalService.get_current_prices(target_currency=target_currency)
         return jsonify({
             'status': 'success',
             'data': prices
         }), 200
-    except Exception as e:
+    except ValueError as ve:
         return jsonify({
             'status': 'error',
-            'message': str(e)
+            'message': str(ve)
+        }), 400
+    except Exception as e:
+        current_app.logger.error(f"Unexpected error in /metals/current: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': "Внутренняя ошибка сервера при получении текущих цен."
         }), 500
 
 @api_bp.route('/metals/history', methods=['GET'])
@@ -93,4 +100,20 @@ def update_metal_prices():
         return jsonify({
             'status': 'error',
             'message': str(e)
-        }), 500 
+        }), 500
+
+# Закомментируем этот обработчик, чтобы использовался предыдущий, работающий с БД
+# @api_bp.route('/metals/history', methods=['GET'])
+# def get_historical_prices_from_mfd():
+#     """Получить исторические цены по металлу и периоду с mfd.ru"""
+#     try:
+#         metal = request.args.get('metal', '').upper()
+#         date_from = request.args.get('date_from', '')
+#         date_to = request.args.get('date_to', '')
+#         if not all([metal, date_from, date_to]):
+#             return jsonify({'status': 'error', 'message': 'Необходимы параметры metal, date_from, date_to'}), 400
+#         from app.services.alpha_vantage_service import MetalParserService
+#         data = MetalParserService.get_historical_prices_from_mfd(metal, date_from, date_to)
+#         return jsonify({'status': 'success', 'data': data}), 200
+#     except Exception as e:
+#         return jsonify({'status': 'error', 'message': str(e)}), 500 
