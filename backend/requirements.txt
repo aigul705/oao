@@ -13,4 +13,5 @@ python-jose==3.3.0
 bcrypt==4.1.2
 alpha-vantage==2.3.1
 requests==2.31.0
-Flask-Caching==2.1.0 
+Flask-Caching==2.1.0
+beautifulsoup4==4.12.3 

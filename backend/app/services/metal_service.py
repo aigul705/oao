@@ -3,6 +3,7 @@ from typing import List, Dict, Optional
 import statistics
 from app import db
 from app.models.metal import Metal, MetalPrice, MetalAnalysis
+from app.services.alpha_vantage_service import MetalParserService
 
 class MetalService:
     @staticmethod
@@ -135,4 +136,22 @@ class MetalService:
             )
             db.session.add(price)
         
+        db.session.commit()
+
+    @staticmethod
+    def update_prices_from_parser():
+        """Обновить цены на металлы через парсинг сайтов."""
+        prices_data = MetalParserService.get_all_current_prices()
+        for price_data in prices_data:
+            if 'symbol' not in price_data or price_data['price'] is None:
+                continue
+            metal = Metal.query.filter_by(symbol=price_data['symbol'].upper()).first()
+            if not metal:
+                continue
+            price = MetalPrice(
+                metal_id=metal.id,
+                price=price_data['price'],
+                timestamp=datetime.utcnow()
+            )
+            db.session.add(price)
         db.session.commit() 

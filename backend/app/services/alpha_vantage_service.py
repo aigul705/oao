@@ -1,110 +1,74 @@
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
-from alpha_vantage.commodities import Commodities
-from flask_caching import Cache
-from app import create_app
+from datetime import datetime
+from typing import Dict, List
+import requests
+from bs4 import BeautifulSoup
 
-class AlphaVantageService:
-    # Metal symbols mapping
+class MetalParserService:
     METAL_SYMBOLS = {
-        'GOLD': 'GC=F',    # Gold COMEX
-        'SILVER': 'SI=F',  # Silver COMEX
-        'PLATINUM': 'PL=F', # Platinum COMEX
-        'PALLADIUM': 'PA=F' # Palladium COMEX
+        'GOLD': 'Золото',
+        'SILVER': 'Серебро',
+        'PLATINUM': 'Платина',
+        'PALLADIUM': 'Палладий'
     }
 
-    def __init__(self, api_key: str):
-        self.api_key = api_key
-        self.commodities = Commodities(key=api_key)
-        self.app = create_app()
-        self.cache = Cache(self.app, config={
-            'CACHE_TYPE': 'SimpleCache',
-            'CACHE_DEFAULT_TIMEOUT': 300  # 5 minutes cache
-        })
+    METAL_URLS = {
+        'GOLD': 'https://www.investing.com/commodities/gold',
+        'SILVER': 'https://www.investing.com/commodities/silver',
+        'PLATINUM': 'https://www.investing.com/commodities/platinum',
+        'PALLADIUM': 'https://www.investing.com/commodities/palladium',
+    }
 
-    def get_current_price(self, metal_symbol: str) -> Dict:
-        """Get current price for a metal with caching."""
-        cache_key = f'current_price_{metal_symbol}'
-        cached_data = self.cache.get(cache_key)
-        
-        if cached_data:
-            return cached_data
+    SYMBOLS_MAP = {
+        'Золото': 'GOLD',
+        'Серебро': 'SILVER',
+        'Платина': 'PLATINUM',
+        'Палладий': 'PALLADIUM'
+    }
 
-        try:
-            av_symbol = self.METAL_SYMBOLS.get(metal_symbol.upper())
-            if not av_symbol:
-                raise ValueError(f"Unsupported metal symbol: {metal_symbol}")
-
-            data, _ = self.commodities.get_commodities_quote(symbol=av_symbol)
-            
-            result = {
-                'symbol': metal_symbol,
-                'price': float(data['05. price']),
-                'currency': 'USD',
-                'timestamp': data['07. latest trading day'],
-                'change': float(data['09. change']),
-                'change_percent': float(data['10. change percent'].rstrip('%'))
-            }
-            
-            # Cache the result
-            self.cache.set(cache_key, result)
-            return result
-
-        except Exception as e:
-            print(f"Error fetching current price for {metal_symbol}: {e}")
-            raise
-
-    def get_historical_prices(self, metal_symbol: str, 
-                            start_date: datetime,
-                            end_date: datetime) -> List[Dict]:
-        """Get historical prices for a metal with caching."""
-        cache_key = f'historical_{metal_symbol}_{start_date.date()}_{end_date.date()}'
-        cached_data = self.cache.get(cache_key)
-        
-        if cached_data:
-            return cached_data
-
-        try:
-            av_symbol = self.METAL_SYMBOLS.get(metal_symbol.upper())
-            if not av_symbol:
-                raise ValueError(f"Unsupported metal symbol: {metal_symbol}")
-
-            # Get daily data
-            data, _ = self.commodities.get_commodities_daily(symbol=av_symbol)
-            
-            # Process and filter the data
-            result = []
-            for date_str, values in data.items():
-                date = datetime.strptime(date_str, '%Y-%m-%d')
-                if start_date <= date <= end_date:
-                    result.append({
-                        'date': date_str,
-                        'price': float(values['4. close']),
-                        'open': float(values['1. open']),
-                        'high': float(values['2. high']),
-                        'low': float(values['3. low']),
-                        'volume': int(values['5. volume'])
-                    })
-            
-            # Sort by date
-            result.sort(key=lambda x: x['date'])
-            
-            # Cache the result
-            self.cache.set(cache_key, result)
-            return result
-
-        except Exception as e:
-            print(f"Error fetching historical prices for {metal_symbol}: {e}")
-            raise
-
-    def get_all_current_prices(self) -> List[Dict]:
-        """Get current prices for all metals."""
+    @staticmethod
+    def get_all_current_prices() -> List[Dict]:
+        url = 'https://mfd.ru/centrobank/preciousmetals/'
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
+        }
         results = []
-        for metal_symbol in self.METAL_SYMBOLS.keys():
-            try:
-                price_data = self.get_current_price(metal_symbol)
-                results.append(price_data)
-            except Exception as e:
-                print(f"Error fetching price for {metal_symbol}: {e}")
-                continue
+        try:
+            response = requests.get(url, headers=headers)
+            response.encoding = 'utf-8'
+            soup = BeautifulSoup(response.text, 'html.parser')
+            table = soup.find('table', class_='mfd-table')
+            if not table:
+                raise Exception('Не найдена таблица с классом mfd-table')
+            rows = table.find_all('tr')[1:]  # пропускаем заголовок
+            for row in rows:
+                cols = row.find_all('td')
+                if len(cols) < 5:
+                    continue
+                name = cols[0].text.strip()
+                symbol = MetalParserService.SYMBOLS_MAP.get(name)
+                if not symbol:
+                    continue  # пропускаем все, что не входит в нужные металлы
+                price_str = cols[1].text.strip().replace('\xa0', '').replace(',', '.').replace(' ', '')
+                try:
+                    price = float(price_str)
+                except Exception:
+                    continue
+                unit = cols[2].text.strip()
+                date_str = cols[4].text.strip()
+                try:
+                    timestamp = datetime.strptime(date_str, '%d.%m.%Y').isoformat()
+                except Exception:
+                    timestamp = datetime.utcnow().isoformat()
+                results.append({
+                    'symbol': symbol,
+                    'name': name,
+                    'price': price,
+                    'unit': unit,
+                    'timestamp': timestamp
+                })
+        except Exception as e:
+            print('Ошибка парсинга:', str(e))
+            raise
+        if results and 'error' in results[0]:
+            print('Ошибка парсинга:', results[0]['error'])
         return results 

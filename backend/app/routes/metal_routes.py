@@ -78,4 +78,19 @@ def get_metal_analysis():
         return jsonify({
             'status': 'error',
             'message': str(e)
+        }), 500
+
+@api_bp.route('/metals/update', methods=['POST'])
+def update_metal_prices():
+    """Обновить цены на металлы."""
+    try:
+        MetalService.update_prices_from_parser()
+        return jsonify({
+            'status': 'success',
+            'message': 'Цены на металлы успешно обновлены'
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
         }), 500 
